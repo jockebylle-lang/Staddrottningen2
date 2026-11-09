@@ -89,7 +89,7 @@ main{flex:1;min-height:0;position:relative}
 .starI{width:16px;height:16px;vertical-align:-3px}
 
 /* kartan */
-.mapHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(253,243,246,.92);backdrop-filter:blur(4px)}
+.mapHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(253,243,246,.98)}
 .mapHead .back{width:40px;height:40px;border-radius:12px;background:var(--pink-soft);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:var(--pink-dark)}
 .mapHead .t{font-family:var(--f-display);font-weight:700;font-size:16px}
 .mapHead .s{font-size:11px;color:var(--muted)}
@@ -1676,6 +1676,9 @@ function decorSVG(id, sel) {
 }
 /* bilder till canvas (cache) */
 const IMG = {};
+/* färgtoningar som är likadana varje bild skapas bara en gång */
+const GRADC = {};
+function gradOnce(c, key, mk) { return GRADC[key] || (GRADC[key] = mk(c)); }
 let IMG_MISS = 0;
 function svgImg(key, svg, w, h) {
   if (IMG[key]) { const q = IMG[key]; if (!q.complete || !q.naturalWidth) IMG_MISS++; return q; }
@@ -1943,7 +1946,7 @@ function confetti(n = 50) {
   const app = $("app");
   for (let i = 0; i < n; i++) {
     const c = document.createElement("div"); c.className = "confetti";
-    c.style.left = Math.random() * 100 + "%"; c.style.top = -20 - Math.random() * 100 + "px";
+    c.style.left = Math.random() * 94 + "%"; c.style.top = -20 - Math.random() * 100 + "px";
     c.style.background = ["#e86a92", "#ffd34d", "#6cc070", "#5aa9e6", "#8a6fc0"][i % 5];
     c.style.animationDuration = 2.4 + Math.random() * 2 + "s"; c.style.zIndex = 30; app.appendChild(c); setTimeout(() => c.remove(), 5000);
   }
@@ -2453,6 +2456,21 @@ function mapLift() {
 }
 // havet går ända upp till kanten, och kartan beskärs så man inte kan skrolla långt ut i tomma gräset
 function mapSeaTop(svg) { for (const e of svg.querySelectorAll(":scope > path")) { const d = e.getAttribute("d") || ""; const m = d.match(/^M430 64 L(\d+) 64/); if (m) e.setAttribute("d", d.replace(m[0], `M430 0 L${m[1]} 0 L${m[1]} 64`)); } }
+/* SVG-filter (skuggor och oskärpa) är mycket tunga när man skrollar kartan på iPhone.
+   Skuggorna görs i stället som en mörk, genomskinlig kopia lite förskjuten bakom, och oskärpan tas bort. */
+function mapBakeFilters(svg) {
+  const SH = { "url(#kSh)": [1.5, 3, "#2f4a22", .26], "url(#kShS)": [0, 2, "#3a2a2e", .22] };
+  for (const el of [...svg.querySelectorAll("[filter]")]) {
+    const f = el.getAttribute("filter"); el.removeAttribute("filter");
+    if (f === "url(#kBlur)") { el.setAttribute("opacity", ".55"); continue; }
+    const s = SH[f]; if (!s) continue;
+    const cl = el.cloneNode(true); cl.removeAttribute("id"); cl.setAttribute("pointer-events", "none");
+    for (const e of [cl, ...cl.querySelectorAll("*")]) { e.removeAttribute("filter"); if (e.hasAttribute("fill") && e.getAttribute("fill") !== "none") e.setAttribute("fill", s[2]); if (e.hasAttribute("stroke") && e.getAttribute("stroke") !== "none") e.setAttribute("stroke", s[2]); e.removeAttribute("opacity"); }
+    if (!cl.hasAttribute("fill")) cl.setAttribute("fill", s[2]);
+    const tr = el.getAttribute("transform") || ""; cl.setAttribute("transform", `translate(${s[0]} ${s[1]}) ${tr}`); cl.setAttribute("opacity", s[3]);
+    el.parentNode.insertBefore(cl, el);
+  }
+}
 let MAPCROP = [0, 1000];
 function mapCrop(svg) {
   const kids = [...svg.children], ov = kids[kids.length - 1], lab = kids.find(e => e.tagName === "g" && e.getAttribute("font-family"));
@@ -2469,6 +2487,7 @@ renderMap = function (opt) {
   if (svg && ["A4", "A5", "A6", "A7"].includes(MV)) {
     if (!MAPLIFT_CACHE[MV]) mapSeaTop(svg);
     try { mapLift(); } catch (e) { console.warn("mapLift", e); }
+    try { mapBakeFilters(svg); } catch (e) { console.warn("mapBake", e); }
     try { mapCrop(svg); } catch (e) { console.warn("mapCrop", e); }
     // scrolla så att vald bana syns i den beskurna kartan
     const L = LV[SEL], el = $("scrMap");
@@ -2515,7 +2534,7 @@ function jobIntro(L) {
    <div class="bubble">”${esc(L.hi)}”</div>
    <div class="col" id="prepRows">${prep.rows}</div>
    ${!prep.limit && prep.est && !JOB_NOEST(L) ? `<div class="row" style="gap:6px"><span style="font-size:18px">⏱</span><span class="small grow">3 stjärnor om du blir klar på under <b>${fmtT(prep.est * .95)}</b>, 2 stjärnor under <b>${fmtT(prep.est * 1.4)}</b>.</span></div>` : ""}
-   <div class="row"><span class="eyebrow grow">Belöning</span>${STARI}${STARI}${STARI}<b>${kr(L.pay)}</b> ${isDone(L.id) ? `<span class="small">(igen: 60 %, full lön första gången du tar 3 ★)</span>` : ""}</div>
+   <div class="col" style="gap:4px"><div class="row" style="align-items:center;gap:8px"><span class="eyebrow" style="flex-shrink:0">Belöning</span><span class="grow"></span><span style="display:inline-flex;gap:2px;flex-shrink:0">${STARI}${STARI}${STARI}</span><b style="white-space:nowrap;flex-shrink:0">${kr(L.pay)}</b></div>${isDone(L.id) ? `<div class="small" style="text-align:right">Spela igen: 60 % av lönen, full lön första gången du tar 3 ★</div>` : ""}</div>
    <div class="btns"><button class="btn soft" id="jBack">Senare</button><button class="btn ${J.green ? "green" : ""}" id="jGo">${J.verb}!</button></div>`);
   $("jBack").onclick = closeSheet;
   $("jGo").onclick = () => { closeSheet(); beginJob(L, "none", prep); };
@@ -2529,12 +2548,23 @@ function beginJob(L, helper, prep, home) {
   clearInterval(JOB.tick); JOB.tick = setInterval(tickJob, 250);
 }
 function openJobScreen() {
+  for (const id of ["jMap", "jHint"]) if ($(id)) $(id)._h = null;
   $("cwrap").querySelectorAll(".door").forEach(e => e.remove()); $("toast").classList.remove("show");
   $("job").hidden = false; $("jCoins").textContent = 0; $("jTimer").textContent = "0:00"; $("jTimer").hidden = !!(JOB && JOB.ride);
   $("kvackBtn").hidden = true; $("jMapWrap").hidden = false;
   requestAnimationFrame(resizeCanvas);
 }
-function closeJobScreen() { $("job").hidden = true; if (JOB) clearInterval(JOB.tick); cancelAnimationFrame(rafId); rafId = 0; }
+/* iPhone har en gräns för hur mycket minne canvas-bilder får ta. När ett jobb är slut släpps rummens bilder direkt. */
+function releaseJobCanvases() {
+  const kill = cv => { if (cv && cv.getContext) { cv.width = 0; cv.height = 0; } };
+  try {
+    const rooms = (typeof SCENE !== "undefined" && SCENE.rooms) || [];
+    const all = rooms.slice(); if (JOB && JOB.stages) for (const st of JOB.stages) if (st.prep && st.prep.rooms) all.push(...st.prep.rooms);
+    for (const r of all) { for (const k of ["_bg", "_gbg", "_fbg", "_wbg"]) if (r[k]) { kill(r[k].cv); r[k] = null; } if (r._gl) { kill(r._gl.cv); r._gl = null; } if (r.dcan) { kill(r.dcan); r.dcan = null; r.ddirty = true; } }
+    if (typeof KMATTA !== "undefined") { kill(KMATTA.cc); kill(KMATTA.bgc); KMATTA.cc = KMATTA.bgc = null; KMATTA.ccOk = false; }
+  } catch (e) { }
+}
+function closeJobScreen() { releaseJobCanvases(); $("job").hidden = true; if (JOB) clearInterval(JOB.tick); cancelAnimationFrame(rafId); rafId = 0; }
 function tickJob() {
   if (!JOB || !JOB.running) return;
   const now = performance.now(); if (!JOB.paused && !JOB.hold) JOB.elapsed += (now - JOB.last) / 1000; JOB.last = now;
@@ -2561,7 +2591,7 @@ let rafId = 0, PARTS = [], FLOATS = [];
 function resizeCanvas() {
   const st = $("stage"); const aw = st.clientWidth - 16, ah = st.clientHeight - 10;
   const s = Math.max(.45, Math.min(aw / W, ah / H)); SCALE = s;
-  cv.style.width = Math.round(W * s) + "px"; cv.style.height = Math.round(H * s) + "px";
+  cv.style.width = Math.round(W * s) + "px"; cv.style.height = Math.round(H * s) + "px"; CVRECT = null;
   const dpr = Math.min(LOWQ ? 1.5 : 2, window.devicePixelRatio || 1); cv.width = Math.round(W * s * dpr); cv.height = Math.round(H * s * dpr);
   ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
   if (ENGINE && ENGINE.layout) ENGINE.layout();
@@ -2593,8 +2623,12 @@ function burst(x, y, c) { for (let i = 0; i < 10; i++) PARTS.push({ x, y, vx: (M
 // inga "+2 kr"-texter som ploppar upp i jobben – myntsiffran uppe till höger räknas ändå
 function floatText(x, y, t, c) { if (/kr\s*$/.test(String(t))) return; FLOATS.push({ x, y: y - 10, t, l: 1, c }); }
 const PTR = { down: false, x: 0, y: 0, sx: 0, sy: 0, moved: 0 };
-function cpos(e) { const b = cv.getBoundingClientRect(); return { x: (e.clientX - b.left) / b.width * W, y: (e.clientY - b.top) / b.height * H }; }
-cv.addEventListener("pointerdown", e => { if (!ENGINE || (JOB && JOB.paused)) return; const p = cpos(e); Object.assign(PTR, { down: true, x: p.x, y: p.y, sx: p.x, sy: p.y, moved: 0, px: p.x, py: p.y }); try { cv.setPointerCapture(e.pointerId); } catch (_) { } if (ENGINE.down) ENGINE.down(p); e.preventDefault(); });
+/* canvasens läge mäts när fingret sätts ner och när skärmen ändras – inte vid varje rörelse */
+let CVRECT = null;
+function cvRect(fresh) { if (fresh || !CVRECT) CVRECT = cv.getBoundingClientRect(); return CVRECT; }
+window.addEventListener("resize", () => { CVRECT = null; }); window.addEventListener("scroll", () => { CVRECT = null; }, true);
+function cpos(e, fresh) { const b = cvRect(fresh); return { x: (e.clientX - b.left) / b.width * W, y: (e.clientY - b.top) / b.height * H }; }
+cv.addEventListener("pointerdown", e => { if (!ENGINE || (JOB && JOB.paused)) return; const p = cpos(e, true); Object.assign(PTR, { down: true, x: p.x, y: p.y, sx: p.x, sy: p.y, moved: 0, px: p.x, py: p.y }); try { cv.setPointerCapture(e.pointerId); } catch (_) { } if (ENGINE.down) ENGINE.down(p); e.preventDefault(); });
 cv.addEventListener("pointermove", e => { if (!PTR.down || !ENGINE) return; const p = cpos(e); PTR.moved += Math.hypot(p.x - PTR.x, p.y - PTR.y); PTR.px = PTR.x; PTR.py = PTR.y; PTR.x = p.x; PTR.y = p.y; if (ENGINE.move) ENGINE.move(p); });
 const ptrUp = e => { if (!PTR.down) return; PTR.down = false; if (ENGINE && ENGINE.up) ENGINE.up({ x: PTR.x, y: PTR.y }); };
 cv.addEventListener("pointerup", ptrUp); cv.addEventListener("pointercancel", ptrUp);
@@ -2606,7 +2640,9 @@ function setTools(list, cur, cls = "") {
   $("tools").onclick = e => { const b = e.target.closest(".tool"); if (b && ENGINE.setTool) { sfx.pop(); ENGINE.setTool(b.dataset.t); } };
 }
 function markTool(cur) { document.querySelectorAll("#tools .tool").forEach(b => b.setAttribute("aria-pressed", b.dataset.t === cur)); }
-const hint = h => { $("jHint").innerHTML = h; };
+/* skriv bara om texten när den faktiskt ändras (färre omritningar av sidan på mobilen) */
+function setHTML(el, h) { if (el && el._h !== h) { el.innerHTML = h; el._h = h; } }
+const hint = h => setHTML($("jHint"), h);
 $("kvackBtn").onclick = () => { sfx.pop(); if (ENGINE && ENGINE.kvack) ENGINE.kvack(); };
 
 /* ---------- jobbet klart ---------- */
@@ -2921,7 +2957,7 @@ const SCENE = {
       else s += `<rect x="${x + 4}" y="${y + ch - 9}" width="${(cw - 12) * p / 100}" height="3" rx="1.5" fill="${done ? "#3f8a3a" : "#e86a92"}"/>`;
       s += `</g>`;
     }
-    $("jMap").innerHTML = s;
+    setHTML($("jMap"), s);
     $("jMap").onclick = e => { const g = e.target.closest(".mm"); if (!g || g.dataset.k === S.cur) return; const k = g.dataset.k; if (S.RM[k].locked) { S.go(k); return; } const d = S.room().doors.find(d => d.to === k); if (d) S.walkTo(k, ...DOORPOS[d.side]); else { S.go(k); } };
   },
   hint() {
@@ -3051,7 +3087,7 @@ const SCENE = {
     else if (S.job === "svamp") drawForestBG(c, r);
     else drawWindowBG(c, r);
     const pulse = S.pulse && performance.now() - S.pulse < 2200;
-    for (const o of r.items) if (o.type === "grass") drawItem(c, o);
+    drawGrassLayer(c, r);
     for (const o of r.items) if (o.type !== "grass" && o.type !== "nat" && o.type !== "cover") drawItem(c, o, pulse);
     for (const o of r.items) if (o.type === "cover") drawItem(c, o, pulse);
     for (const o of r.items) if (o.type === "nat") drawItem(c, o, pulse);
@@ -3266,7 +3302,7 @@ function drawSkrap(c, item) {
   else if (item === "bok") { c.rotate(-.3); rr(c, -12, -15, 24, 30, 3, "#8a6fc0"); c.fillStyle = "#fff"; c.fillRect(-12, 10, 24, 3); }
   else if (item === "tvatt") { c.rotate(.4); rr(c, -16, -12, 32, 24, 6, "#ffd34d"); rr(c, -10, -18, 20, 14, 5, "#5aa9e6"); }
 }
-function drawGardenBG(c, r, S) {
+function drawGardenBGRaw(c, r, S) {
   c.fillStyle = "#8fcc6c"; c.fillRect(0, 0, W, H);
   if (r.t === "fotboll") drawPitch(c);
   if (r.t === "framsidan") { rr(c, 40, -10, 280, 120, 6, "#d6534a"); c.fillStyle = "#b8403a"; c.fillRect(40, 100, 280, 10); for (const x of [70, 250]) { rr(c, x, 30, 46, 40, 4, "#fff"); rr(c, x + 4, 34, 38, 32, 2, "#cfe9ff"); } rr(c, 156, 40, 48, 70, 4, "#fff"); for (let y = 124; y < H; y += 34) rr(c, 160, y, 40, 26, 10, "#e3d6c4"); circ(c, 30, 112, 8, "#e86a92"); circ(c, 340, 112, 8, "#e86a92"); }
@@ -3275,7 +3311,54 @@ function drawGardenBG(c, r, S) {
   if (r.t === "barbuskarna") { rr(c, 0, 170, W, 80, 0, "#a8dc86"); for (const [x, y] of [[90, 130], [270, 130], [90, 300], [270, 300]]) { circ(c, x, y, 40, "#4f8a3a"); circ(c, x - 18, y + 6, 24, "#5da14a"); circ(c, x + 18, y - 4, 26, "#5da14a"); } const im = svgImg("cust:" + S.L.who.look, `<svg viewBox="-20 -30 40 60" width="80" height="120">${personInner(S.L.who.look)}</svg>`); if (im.complete) c.drawImage(im, 300, 360, 44, 66); }
   if (r.t === "gardsplanen") { c.fillStyle = "#e3d6c4"; c.beginPath(); c.ellipse(180, 240, 150, 170, 0, 0, 7); c.fill(); c.fillStyle = "#d6c6ae"; for (let i = 0; i < 40; i++) circ(c, 60 + (i * 53) % 240, 90 + (i * 37) % 300, 2, "#cdbb9e"); rr(c, 250, 20, 100, 70, 6, "#c0392b"); c.fillStyle = "#fff"; c.fillRect(250, 20, 100, 6); }
 }
-function drawForestBG(c, r) {
+
+/* ---------- snabbare ritning: det som inte ändras ritas en gång till en egen bild ---------- */
+function bgScale(c) { const m = c.getTransform(); return Math.round(Math.hypot(m.a, m.b) * 100) / 100; }
+function cachedBG(c, r, slot, key, fn) {
+  const sc = bgScale(c); if (!(sc > 0)) return fn(c);
+  key += "|" + sc; let B = r[slot];
+  if (!B || B.key !== key) {
+    const cvb = (B && B.cv) || document.createElement("canvas"); cvb.width = Math.ceil(W * sc); cvb.height = Math.ceil(H * sc);
+    const g = cvb.getContext("2d"); g.setTransform(sc, 0, 0, sc, 0, 0); g.clearRect(0, 0, W, H);
+    IMG_MISS = 0; fn(g);
+    B = r[slot] = { key: IMG_MISS ? "" : key, cv: cvb };
+  }
+  c.drawImage(B.cv, 0, 0, W, H);
+}
+function drawGardenBG(c, r, S) {
+  const raked = r.t === "baksidan" ? r.items.filter(o => o.type === "leaf" && o.a <= 0).length : 0;
+  cachedBG(c, r, "_gbg", r.t + "|" + raked + "|" + (S && S.L && S.L.who ? S.L.who.look : ""), g => drawGardenBGRaw(g, r, S));
+}
+function drawForestBG(c, r) { cachedBG(c, r, "_fbg", r.key, g => drawForestBGRaw(g, r)); }
+function drawWindowBG(c, r) { cachedBG(c, r, "_wbg", r.key + "|" + r.view, g => drawWindowBGRaw(g, r)); }
+/* gräset ligger i ett eget lager där bara rutorna som klippts ritas om */
+function drawGrassLayer(c, r) {
+  const gr = r._grass || (r._grass = r.items.filter(o => o.type === "grass"));
+  if (!gr.length) return;
+  const sc = bgScale(c);
+  let L = r._gl;
+  const full = !L || L.sc !== sc || L.n !== gr.length;
+  if (full) {
+    const cv2 = (L && L.cv) || document.createElement("canvas"); cv2.width = Math.ceil(W * sc); cv2.height = Math.ceil(H * sc);
+    L = r._gl = { cv: cv2, g: cv2.getContext("2d"), sc, n: gr.length };
+    L.g.setTransform(sc, 0, 0, sc, 0, 0); L.g.clearRect(0, 0, W, H);
+    for (const o of gr) { drawItem(L.g, o); o._da = o.a; }
+  } else {
+    const ch = gr.filter(o => o._da !== o.a);
+    if (ch.length) {
+      const g = L.g;
+      for (const q of ch) {
+        const x0 = q.x - 16, y0 = q.y - 24, w = 32, h = 40;
+        g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip(); g.clearRect(x0, y0, w, h);
+        for (const o of gr) if (Math.abs(o.x - q.x) < 32 && o.y - q.y > -32 && o.y - q.y < 50) drawItem(g, o);
+        g.restore();
+      }
+      for (const o of ch) o._da = o.a;
+    }
+  }
+  c.drawImage(L.cv, 0, 0, W, H);
+}
+function drawForestBGRaw(c, r) {
   c.fillStyle = "#7fae5a"; c.fillRect(0, 0, W, H);
   const R = rng(hash(r.key));
   for (let i = 0; i < 40; i++) circ(c, R() * W, R() * H, 6 + R() * 16, i % 2 ? "#8cbd64" : "#6f9e4c");
@@ -3283,7 +3366,7 @@ function drawForestBG(c, r) {
   for (const [x, y] of [[20, 40], [340, 60], [30, 400], [330, 410], [180, 20]]) { circ(c, x, y, 30, "#3f6e34"); circ(c, x, y, 18, "#4f8a3a"); circ(c, x, y, 6, "#6b4428"); }
   for (let i = 0; i < 5; i++) { const x = 40 + R() * 280, y = 60 + R() * 330; c.strokeStyle = "#4f8a3a"; c.lineWidth = 3; for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18); c.stroke(); } }
 }
-function drawWindowBG(c, r) {
+function drawWindowBGRaw(c, r) {
   c.fillStyle = "#f4e7d4"; c.fillRect(0, 0, W, H);
   // utsikten
   const v = r.view; const g = c.createLinearGradient(0, 60, 0, 380); g.addColorStop(0, "#bfe3f7"); g.addColorStop(1, "#e8f6fd"); c.fillStyle = g; c.fillRect(50, 60, 260, 320);
@@ -4150,7 +4233,7 @@ function makeHomeHunt(cfg) { return {
       const fs = 7.5, top = y + h / 2 - (lines.length - 1) * fs * .55 + 2.5;
       s += lines.map((t, i) => `<text x="${x + w / 2}" y="${top + i * fs * 1.1}" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="${fs}" fill="${i === lines.length - 1 ? (n ? "#c2416b" : "#3f8a3a") : "#3a2a2e"}">${t}</text>`).join("") + `</g>`;
     }
-    $("jMap").innerHTML = s;
+    $("jMap")._h = null; $("jMap").innerHTML = s;
     $("jMap").onclick = e => { const g = e.target.closest(".mm"); if (!g || g.dataset.k === S.cur) return; sfx.door(); S.go(g.dataset.k); };
   },
   hint() { const S = this, c = S.cfg; hint(`<b>Tryck</b> på ${c.plural}${c.peels.length ? " och bananskalen" : ""}. <span style="opacity:.85">${c.emoji} ${S.caught}/${S.hogs.length}${c.peels.length ? ` · 🍌 ${S.picked}/${S.peels.length}` : ""}</span>`); },
@@ -4401,7 +4484,7 @@ drawRoomBG = function (c, r) {
   if (!lookOn() || !LOOK.win) return;
   const wn = LOOK.win, t = performance.now() / 1000, WH = LOOK.wallH;
   c.save();
-  const g = c.createLinearGradient(0, WH, 0, 340); g.addColorStop(0, "rgba(255,246,214,.17)"); g.addColorStop(1, "rgba(255,246,214,0)");
+  const g = gradOnce(c, "look-ray", c => { const g = c.createLinearGradient(0, WH, 0, 340); g.addColorStop(0, "rgba(255,246,214,.17)"); g.addColorStop(1, "rgba(255,246,214,0)"); return g; });
   c.fillStyle = g; c.beginPath(); c.moveTo(wn.x, WH); c.lineTo(wn.x + wn.w, WH); c.lineTo(wn.x + wn.w + 70, 340); c.lineTo(wn.x + 10, 340); c.closePath(); c.fill();
   // dammkorn som svävar i ljuset
   c.fillStyle = "#fff";
@@ -4455,7 +4538,7 @@ SCENE.draw = function (c) {
   for (const s of LOOK.sparks) { s.t += .03; const a = Math.sin(Math.min(1, s.t) * Math.PI); c.save(); c.translate(s.x, s.y); c.scale(s.k * (.5 + a * .7), s.k * (.5 + a * .7)); c.globalAlpha = a; c.fillStyle = "#fff"; c.beginPath(); c.moveTo(0, -8); c.quadraticCurveTo(1.2, -1.2, 8, 0); c.quadraticCurveTo(1.2, 1.2, 0, 8); c.quadraticCurveTo(-1.2, 1.2, -8, 0); c.quadraticCurveTo(-1.2, -1.2, 0, -8); c.fill(); c.restore(); }
   LOOK.sparks = LOOK.sparks.filter(s => s.t < 1);
   // J5: lite mörkare hörn
-  const vg = c.createRadialGradient(W / 2, H * .55, H * .35, W / 2, H * .55, H * .78); vg.addColorStop(0, "rgba(58,42,46,0)"); vg.addColorStop(1, "rgba(58,42,46,.2)"); c.fillStyle = vg; c.fillRect(0, 0, W, H);
+  const vg = gradOnce(c, "look-vig", c => { const vg = c.createRadialGradient(W / 2, H * .55, H * .35, W / 2, H * .55, H * .78); vg.addColorStop(0, "rgba(58,42,46,0)"); vg.addColorStop(1, "rgba(58,42,46,.2)"); return vg; }); c.fillStyle = vg; c.fillRect(0, 0, W, H);
   // J8: rummet lyser upp när det blir rent
   const done = S.prog(r.key) >= 100;
   if (done && !r.shineT) { r.shineT = now; for (let i = 0; i < 9; i++) LOOK.sparks.push({ x: 40 + Math.random() * 280, y: 70 + Math.random() * 320, t: -Math.random() * .6, k: 1 + Math.random() * .8 }); }
@@ -4524,7 +4607,7 @@ const KMATTA = {
     S.obst = [];
     S.coins = [0, 1].map(() => ({ x: KM.X0 + R() * (KM.X1 - KM.X0), y: KM.Y0 + 10 + R() * 330, got: false }));
     $("jTitle").textContent = "Kupan"; $("jSub").textContent = "Miniuppdrag 1: dammsug långa mattan";
-    $("jMap").innerHTML = ""; $("jMapWrap").hidden = true;
+    $("jMap")._h = null; $("jMap").innerHTML = ""; $("jMapWrap").hidden = true;
     kupLegend(`<div class="legend" style="min-height:30px"><span class="lgTool">🌀<b>Dammsugare</b></span></div>`);
     hint("<b>Dra</b> dammsugaren upp och ner längs mattan tills hela mattan är ren!");
   },
@@ -4559,7 +4642,7 @@ const KMATTA = {
     kmCarpet(S); c.drawImage(S.cc, 0, 0, W, H);
     for (const co of S.coins) if (co.got === false && S.cells.some(cl => cl.d <= 0 && Math.abs(KM.X0 + (cl.l + .5) * S.lw - co.x) < S.lw / 2 && Math.abs(KM.Y0 + cl.r * KM.CH + 5 - co.y) < 6)) { circ(c, co.x, co.y, 6, "#ffd34d"); c.strokeStyle = "#c9961a"; c.lineWidth = 1.5; c.beginPath(); c.arc(co.x, co.y, 6, 0, 7); c.stroke(); }
     for (const o of S.obst) if (!o.got) {
-      c.save(); c.translate(o.x, o.y); c.shadowColor = "rgba(0,0,0,.3)"; c.shadowBlur = 4; c.shadowOffsetY = 2;
+      c.save(); c.translate(o.x, o.y); c.shadowColor = "rgba(0,0,0,.18)"; c.shadowBlur = 0; c.shadowOffsetY = 2;
       if (o.t === "lego") { rr(c, -9, -6, 18, 12, 2, o.c); c.shadowColor = "transparent"; circ(c, -4, -6, 2.6, o.c); circ(c, 4, -6, 2.6, o.c); }
       else { c.fillStyle = o.c; c.beginPath(); c.moveTo(-4, -12); c.lineTo(4, -12); c.lineTo(4, 2); c.quadraticCurveTo(12, 4, 10, 10); c.lineTo(-2, 10); c.quadraticCurveTo(-5, 8, -4, 2); c.closePath(); c.fill(); }
       c.restore(); c.save(); c.globalAlpha = .6 + .4 * Math.sin(t * 5); c.strokeStyle = "#e86a92"; c.lineWidth = 2; c.setLineDash([4, 3]); c.beginPath(); c.arc(o.x, o.y, 17, 0, 7); c.stroke(); c.restore();
@@ -4567,7 +4650,7 @@ const KMATTA = {
     // munstycke, slang och Fanny
     const nz = S.nz, fx0 = clamp(nz.x - 40, 30, 330), fy0 = Math.min(H - 20, nz.y + 70);
     c.save(); c.strokeStyle = "#55565e"; c.lineWidth = 6; c.lineCap = "round"; c.beginPath(); c.moveTo(nz.x, nz.y + 6); c.quadraticCurveTo(nz.x, fy0, fx0 + 14, fy0 - 10); c.stroke(); c.restore();
-    c.save(); c.shadowColor = "rgba(0,0,0,.3)"; c.shadowBlur = 5; c.shadowOffsetY = 2; rr(c, nz.x - 27, nz.y - 7, 54, 15, 5, "#3a3a40"); c.restore(); rr(c, nz.x - 27, nz.y + 5, 54, 3, 1, "#e86a92");
+    c.save(); c.shadowColor = "rgba(0,0,0,.18)"; c.shadowBlur = 0; c.shadowOffsetY = 2; rr(c, nz.x - 27, nz.y - 7, 54, 15, 5, "#3a3a40"); c.restore(); rr(c, nz.x - 27, nz.y + 5, 54, 3, 1, "#e86a92");
     if (S.active && !S.full) { c.save(); c.globalAlpha = .5; for (let k = 0; k < 4; k++) circ(c, nz.x - 20 + Math.random() * 40, nz.y - 12 - Math.random() * 10, 1.2, "#d9cfb6"); c.restore(); }
     const im = charImg("fanny"); if (im.complete) c.drawImage(im, fx0 - 24, fy0 - 40, 48, 72);
     c.font = "700 11px Fredoka, Nunito, sans-serif"; const done = S.stripes.filter(Boolean).length; rr(c, 248, 12, 102, 48, 14, "rgba(255,255,255,.95)"); c.textAlign = "center"; c.fillStyle = "#3a2a2e"; c.fillText("Ränder", 299, 30); c.font = "700 16px Fredoka, Nunito, sans-serif"; c.fillStyle = "#c2416b"; c.fillText(`${done} / ${KM.LANES}`, 299, 51);
@@ -4584,7 +4667,7 @@ const KTOA = {
   start(L) {
     const S = this; Object.assign(S, { L, cur: 0, finished: false, R: rng((L.seed || 1) + 11) });
     S.newToilet();
-    $("jTitle").textContent = "Kupan"; $("jMapWrap").hidden = true; $("jMap").innerHTML = "";
+    $("jTitle").textContent = "Kupan"; $("jMapWrap").hidden = true; $("jMap")._h = null; $("jMap").innerHTML = "";
     kupLegend(`<div class="legend" style="min-height:30px"><span class="lgTool">🪥<b>Toaborste</b></span><span class="lgTool">🧴<b>Spray</b></span><span class="lgTool">🧽<b>Mopp</b></span></div>`);
     hint("<b>Snurra</b> i skålen, <b>gnugga</b> sitsen och <b>torka</b> upp båda pölarna.");
   },
@@ -4760,7 +4843,7 @@ const TVATT = {
   mini() {
     const P = [["sort", "Sortera"], ["machine", "Tvätta"], ["hang", "Häng upp"], ["fold", "Vik ihop"], ["socks", "Strumpor"]];
     const i = P.findIndex(p => p[0] === (this.phase === "dry" ? "hang" : this.phase));
-    $("jMap").innerHTML = P.map(([k, n], j) => `<g><rect x="${6 + j * 74}" y="18" width="68" height="34" rx="10" fill="${j < i ? "#bfe5cf" : j === i ? "#fde6ee" : "#fff"}" stroke="${j === i ? "#e86a92" : j < i ? "#7cc6a4" : "#e6d3da"}" stroke-width="${j === i ? 3 : 1.5}"/><text x="${40 + j * 74}" y="39" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="11" fill="#3a2a2e">${j < i ? "✓ " : ""}${n}</text></g>`).join("");
+    $("jMap")._h = null; $("jMap").innerHTML = P.map(([k, n], j) => `<g><rect x="${6 + j * 74}" y="18" width="68" height="34" rx="10" fill="${j < i ? "#bfe5cf" : j === i ? "#fde6ee" : "#fff"}" stroke="${j === i ? "#e86a92" : j < i ? "#7cc6a4" : "#e6d3da"}" stroke-width="${j === i ? 3 : 1.5}"/><text x="${40 + j * 74}" y="39" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="11" fill="#3a2a2e">${j < i ? "✓ " : ""}${n}</text></g>`).join("");
     $("jMap").onclick = null;
     const lab = { sort: "Dra plaggen till rätt korg", machine: "Korgarna in i maskinerna, sen Starta", dry: "Solen torkar …", hang: "Dra tvätten upp till linan", fold: "Tryck på plaggen för att vika", socks: "Para ihop strumporna" }[this.phase];
     setTools([{ id: "x", name: lab, icon: this.phase === "socks" ? ic(`<path d="M-6 -10 h6 v10 q0 3 4 3 h3 q3 0 3 3 q0 3 -3 3 h-9 q-4 0 -4 -4z" fill="#e86a92"/>`) : ICON.hand }], "x");
@@ -4933,7 +5016,7 @@ const SNOW = {
     jtoast(S.hman ? `${helper === "alla" ? "Alla" : HELP[helper].name}: ”Jag bygger en egen längst bort!”` : "Rulla den första bollen!");
   },
   stop() { },
-  mini() { $("jMap").innerHTML = this.men.map((m, i) => `<g><rect x="${10 + i * 120}" y="16" width="110" height="38" rx="10" fill="${m.done ? "#bfe5cf" : i === this.cur ? "#fde6ee" : "#fff"}" stroke="${i === this.cur ? "#e86a92" : "#e6d3da"}" stroke-width="${i === this.cur ? 3 : 1.5}"/><text x="${65 + i * 120}" y="40" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="12" fill="#3a2a2e">${m.done ? "✓ " : "⛄ "}Snögubbe ${i + 1}</text></g>`).join(""); $("jMap").onclick = null; },
+  mini() { $("jMap")._h = null; $("jMap").innerHTML = this.men.map((m, i) => `<g><rect x="${10 + i * 120}" y="16" width="110" height="38" rx="10" fill="${m.done ? "#bfe5cf" : i === this.cur ? "#fde6ee" : "#fff"}" stroke="${i === this.cur ? "#e86a92" : "#e6d3da"}" stroke-width="${i === this.cur ? 3 : 1.5}"/><text x="${65 + i * 120}" y="40" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="12" fill="#3a2a2e">${m.done ? "✓ " : "⛄ "}Snögubbe ${i + 1}</text></g>`).join(""); $("jMap").onclick = null; },
   toolsRoll() { setTools([{ id: "rulla", name: "Rulla snöbollar", icon: ic(`<circle r="10" fill="#fff" stroke="#9ccbe6" stroke-width="2"/>`) }], "rulla", "b"); this.tool = null; hint(`<b>Dra</b> fingret i snön tills mätaren visar <b>Lagom</b> – släpp då. ${["Först en stor", "Sen en mellan", "Sist en liten"][this.man().balls.length] || ""} boll.`); },
   toolsDeco() { const m = this.man(); const left = DECO.filter(d => !m.deco[d.id]); setTools(left.map(d => ({ id: d.id, name: d.name, icon: DECOICON[d.id] })), this.tool = left[0].id, "b"); hint("<b>Välj</b> en sak och <b>tryck</b> på snögubben."); },
   setTool(t) { if (this.man().balls.length < 3) return; this.tool = t; markTool(t); },
@@ -4999,7 +5082,7 @@ const SNOW = {
 
   draw(c) {
     const S = this;
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#3a4a6a"); g.addColorStop(.45, "#5a6b8a"); g.addColorStop(.46, "#eef6fb"); g.addColorStop(1, "#ffffff"); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const g = gradOnce(c, "snow-sky", c => { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#3a4a6a"); g.addColorStop(.45, "#5a6b8a"); g.addColorStop(.46, "#eef6fb"); g.addColorStop(1, "#ffffff"); return g; }); c.fillStyle = g; c.fillRect(0, 0, W, H);
     c.fillStyle = "#4a5570"; c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 260); c.quadraticCurveTo(30, 140, 60, 120); c.quadraticCurveTo(100, 40, 180, 30); c.quadraticCurveTo(260, 40, 300, 120); c.quadraticCurveTo(330, 140, 360, 260); c.lineTo(360, 0); c.fill();
     c.fillStyle = "#cfe9ff"; for (let i = 0; i < 12; i++) { const x = 60 + i * 22, l = 10 + (i * 7) % 18; c.beginPath(); c.moveTo(x - 5, 34 + (i % 3) * 8); c.lineTo(x + 5, 34 + (i % 3) * 8); c.lineTo(x, 34 + (i % 3) * 8 + l); c.fill(); }
     c.save(); c.globalAlpha = .25; circ(c, 180, 90, 60, "#fff6d6"); c.restore();
@@ -5331,7 +5414,7 @@ SCENE.start = function (L, helper, prep) {
    Mjuka skuggor, ljus och lite liv i luften: trädgården (solfläckar, fjärilar),
    fönsterputsen (reflexer), tvätten (lampljus, såpbubblor), svampskogen (solstrålar, pollen),
    snögubbarna (lampsken, gnistrande snö) och resorna med bil och cykel. */
-const liftSh = (c, fn, blur = 8, dx = 3, dy = 6, a = .3) => { const m = c.getTransform(); c.save(); c.shadowColor = `rgba(50,40,30,${a})`; c.shadowBlur = (LOWQ ? blur * .35 : blur) * m.a; c.shadowOffsetX = dx * m.a; c.shadowOffsetY = dy * m.d; fn(); c.restore(); };
+const liftSh = (c, fn, blur = 8, dx = 3, dy = 6, a = .3) => { const m = c.getTransform(); c.save(); c.shadowColor = `rgba(50,40,30,${a * .6})`; c.shadowBlur = 0; c.shadowOffsetX = dx * .7 * m.a; c.shadowOffsetY = dy * .7 * m.d; fn(); c.restore(); };
 /* ljus och vinjetter ritas en gång till en egen bild och återanvänds (runda toningar är tunga på mobilen) */
 const LIFTC = {};
 function liftVignette(c, r0, r1, rgb, a, cx = 180, cy = 240) {
@@ -5340,9 +5423,15 @@ function liftVignette(c, r0, r1, rgb, a, cx = 180, cy = 240) {
   c.drawImage(cv, 0, 0, W, H);
 }
 function liftGlow(c, x, y, r, rgb, a) {
-  const key = "g" + [r, rgb, a].join("|"); let cv = LIFTC[key];
-  if (!cv) { const s = Math.ceil(r * 2 * 1.5); cv = document.createElement("canvas"); cv.width = cv.height = s; const g = cv.getContext("2d"); const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(0, 0, s, s); LIFTC[key] = cv; }
-  c.drawImage(cv, x - r, y - r, r * 2, r * 2);
+  const key = "g" + rgb; let cv = LIFTC[key];
+  if (!cv) { const s = 128; cv = document.createElement("canvas"); cv.width = cv.height = s; const g = cv.getContext("2d"); const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(0, 0, s, s); LIFTC[key] = cv; }
+  const ga = c.globalAlpha; c.globalAlpha = ga * Math.max(0, Math.min(1, a)); c.drawImage(cv, x - r, y - r, r * 2, r * 2); c.globalAlpha = ga;
+}
+/* mjuk skugga som färdig bild (i stället för suddig skugga som räknas om varje bild) */
+function liftShadowBlob(c, x, y, rx, ry, a) {
+  let cv = LIFTC.shadow;
+  if (!cv) { const s = 64; cv = document.createElement("canvas"); cv.width = cv.height = s; const g = cv.getContext("2d"); const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, "rgba(50,40,30,1)"); gr.addColorStop(.55, "rgba(50,40,30,.55)"); gr.addColorStop(1, "rgba(50,40,30,0)"); g.fillStyle = gr; g.fillRect(0, 0, s, s); LIFTC.shadow = cv; }
+  const ga = c.globalAlpha; c.globalAlpha = ga * a; c.drawImage(cv, x - rx, y - ry, rx * 2, ry * 2); c.globalAlpha = ga;
 }
 function liftButterfly(c, x, y, col, t) { const f = Math.abs(Math.sin(t * 12)) * .8; c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath(); c.ellipse(-4, 0, 5, 7 * f + 2, -.5, 0, 7); c.ellipse(4, 0, 5, 7 * f + 2, .5, 0, 7); c.fill(); c.fillStyle = "#3a2a2e"; c.fillRect(-1, -5, 2, 10); c.restore(); }
 function liftSparkle(c, x, y, s) { c.save(); c.translate(x, y); c.scale(s, s); c.beginPath(); c.moveTo(0, -5); c.quadraticCurveTo(.8, -.8, 5, 0); c.quadraticCurveTo(.8, .8, 0, 5); c.quadraticCurveTo(-.8, .8, -5, 0); c.quadraticCurveTo(-.8, -.8, 0, -5); c.fill(); c.restore(); }
@@ -5351,7 +5440,7 @@ const LIFTJOBS = ["tradgard", "svamp", "fonster"];
 // skuggor under buskar, blommor, svampar, stenar och fönsterbrädans saker
 const _drawItemL = drawItem;
 drawItem = function (c, o, pulse) {
-  if (ENGINE === SCENE && LIFTJOBS.includes(SCENE.job) && o.a > 0 && !["grass", "leaf", "cover", "gsmuts", "lodder", "gflack", "nat", "fly"].includes(o.type)) return liftSh(c, () => _drawItemL(c, o, pulse), 7, 2, 5, .32);
+  if (ENGINE === SCENE && LIFTJOBS.includes(SCENE.job) && o.a > 0 && !o.hidden && !["grass", "leaf", "cover", "gsmuts", "lodder", "gflack", "nat", "fly"].includes(o.type)) { const rr2 = (o.r || 14) * 1.1, oy = o.type === "tuft" ? 62 : o.y; liftShadowBlob(c, o.x + 2, oy + 5, rr2, rr2 * .6, .32); }
   return _drawItemL(c, o, pulse);
 };
 const _drawSceneL = SCENE.draw;
@@ -5366,7 +5455,7 @@ SCENE.draw = function (c) {
     liftVignette(c, 160, 330, "30,60,20", .22);
   }
   if (job === "svamp") {
-    for (const [x0, w] of [[60, 40], [170, 26], [250, 50]]) { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "rgba(255,246,200,.26)"); g.addColorStop(1, "rgba(255,246,200,0)"); c.fillStyle = g; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x0 + w, 0); c.lineTo(x0 + w + 110, H); c.lineTo(x0 + 60, H); c.closePath(); c.fill(); }
+    for (const [x0, w] of [[60, 40], [170, 26], [250, 50]]) { const g = gradOnce(c, "svamp-beam", c => { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "rgba(255,246,200,.26)"); g.addColorStop(1, "rgba(255,246,200,0)"); return g; }); c.fillStyle = g; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x0 + w, 0); c.lineTo(x0 + w + 110, H); c.lineTo(x0 + 60, H); c.closePath(); c.fill(); }
     c.fillStyle = "#fff6c8"; for (let i = 0; i < 14; i++) { const x = (i * 61 + t * 10) % 360, y = (i * 97 + Math.sin(t + i) * 20 + 400) % 440; c.globalAlpha = .6 * Math.abs(Math.sin(t * 2 + i)); c.beginPath(); c.arc(x, y, 1.8, 0, 7); c.fill(); }
     c.globalAlpha = 1; liftVignette(c, 140, 320, "20,40,20", .32);
   }
@@ -5425,7 +5514,7 @@ RIDE.draw = function (c) {
     c.globalAlpha = 1; liftGlow(c, 330 * K, Y(104), 90, "255,246,214", .3);
     c.restore();
     // solljus som faller in i bilen och dammkorn i ljuset
-    const g = c.createLinearGradient(W, 0, 120, H); g.addColorStop(0, "rgba(255,240,200,.22)"); g.addColorStop(1, "rgba(255,240,200,0)"); c.fillStyle = g;
+    const g = gradOnce(c, "bil-sun", c => { const g = c.createLinearGradient(W, 0, 120, H); g.addColorStop(0, "rgba(255,240,200,.22)"); g.addColorStop(1, "rgba(255,240,200,0)"); return g; }); c.fillStyle = g;
     c.beginPath(); c.moveTo(250, 40); c.lineTo(340, 40); c.lineTo(250, H); c.lineTo(130, H); c.closePath(); c.fill();
     c.fillStyle = "#fff6d6"; for (let i = 0; i < 10; i++) { const x = 200 + (i * 37 + Math.sin(t * .7 + i) * 14) % 120, y = 120 + (i * 53 + t * 8) % 260; c.globalAlpha = .5 * Math.abs(Math.sin(t * 1.5 + i)); c.beginPath(); c.arc(x, y, 1.5, 0, 7); c.fill(); }
     c.globalAlpha = 1; liftVignette(c, 170, 330, "20,20,30", .3);
@@ -5643,6 +5732,21 @@ function renderHome() {
     const g = el.querySelector(`.pet[data-p="${p}"]`); if (g) { const [x, y] = SC.P(...PETPOS[p]); g.style.transform = `translate(${x}px,${y}px)`; }
   }, 2600);
 }
+/* skuggfiltret på alla möbler var tungt på iPhone (det räknades om när djuren gick runt).
+   Nu får möblerna en färdig mörk, genomskinlig kopia bakom sig, och djur och personer en liten skugga under fötterna. */
+function homeBakeShadow(box, k) {
+  const g = box.querySelector('g[filter="url(#hmSh)"]'); if (!g) return;
+  g.removeAttribute("filter");
+  const ns = "http://www.w3.org/2000/svg", sh = document.createElementNS(ns, "g");
+  sh.setAttribute("pointer-events", "none"); sh.setAttribute("opacity", ".2"); sh.setAttribute("transform", `translate(${(1.5 * k).toFixed(2)} ${(3 * k).toFixed(2)})`);
+  for (const ch of [...g.children]) {
+    if (ch.classList.contains("pet") || ch.classList.contains("person")) continue;
+    const cl = ch.cloneNode(true); cl.removeAttribute("class"); for (const a of [...cl.attributes]) if (a.name.startsWith("data-")) cl.removeAttribute(a.name);
+    for (const e of [cl, ...cl.querySelectorAll("*")]) { e.removeAttribute("class"); e.removeAttribute("id"); if (e.hasAttribute("fill") && e.getAttribute("fill") !== "none") e.setAttribute("fill", "#5a3a2a"); if (e.hasAttribute("stroke") && e.getAttribute("stroke") !== "none") e.setAttribute("stroke", "#5a3a2a"); e.removeAttribute("opacity"); }
+    cl.setAttribute("fill", "#5a3a2a"); sh.appendChild(cl);
+  }
+  g.parentNode.insertBefore(sh, g);
+}
 function setHomeSay(t) {
   let b = $("homeSay");
   if (!b) { b = document.createElement("div"); b.id = "homeSay"; b.className = "homeSay"; $("app").insertBefore(b, $("job")); }
@@ -5684,6 +5788,7 @@ function drawHome() {
   for (const p of pets) { const [x, y] = P(...PETPOS[p]); const Q = PETS[p], w = (Q.kind === "hund" ? 38 : 28) * k * 1.1, h = (Q.kind === "hund" ? 32 : 28) * k * 1.1; ov += `<g class="pet" data-p="${p}" style="transform:translate(${x}px,${y}px)"><circle r="${22 * k}" fill="transparent"/><use href="#${Q.sym}" x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}"/></g>`; }
   if (G.hyss) { const room = G.hyss.room === "tvatt" ? "Badrum" : G.hyss.room; const r = HOME_ROOMS.find(q => q.id === room); if (r) { const [x, y] = P(r.gx + r.gw / 2, r.gy + 1.4); ov += `<g class="hyssM" style="cursor:pointer" transform="translate(${x} ${y})"><circle r="16" fill="#ffd34d" stroke="#fff" stroke-width="3"><animate attributeName="r" values="14;18;14" dur="1.2s" repeatCount="indefinite"/></circle><text y="6" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="18" fill="#3a2a2e">!</text></g>`; } }
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" id="homeSvg">${homeLook(SC, W, H)}</svg>`.replace("<!--HOMEOV-->", `<g id="homeOv"><g>${flat}</g><g filter="url(#hmSh)">${ov}</g></g>`);
+  homeBakeShadow(box, k);
   const svg = $("homeSvg");
   svg.onclick = e => {
     if (HOMEMODE === "inred") return;
