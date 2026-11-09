@@ -668,7 +668,7 @@ const LEVELS = [], LV = {};
     else if (L.kind === "butik") L.title = "Butiken i " + L.place.toLowerCase();
     else if (L.kind === "kontor" && L.area === "iggesund") L.title = L.who.name + " på bruket";
     else L.title = L.who.name + " " + inPlace(L.place);
-    L.pay = Math.round((80 + 4 * L.no) * (L.slut ? 1.5 : 1) * (L.bonus ? 1.25 : 1) / 5) * 5;
+    L.pay = Math.round(2 * (80 + 4 * L.no) * (L.slut ? 1.5 : 1) * (L.bonus ? 1.25 : 1) / 5) * 5; // dubbel lön efter speltest 2
     // krav för genvägar
     if (L.bonus === "fonster" && (L.map === "A6" || (L.map === "A4" && L.place === "Idenor"))) L.need = "stege";
     if (L.bonus === "fonster" && L.map === "A7") L.need = "tobbe";
@@ -1833,6 +1833,8 @@ function tone(f = 660, d = .08, type = "sine", vol = .05, when = 0) {
     o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + .02);
   } catch (e) { }
 }
+// starta ljudet redan vid första trycket, så det inte hackar första gången ett ljud spelas
+window.addEventListener("pointerdown", () => { try { if (G.sound) { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); } } catch (e) { } }, { once: true, passive: true });
 const sfx = {
   pop: () => tone(520 + Math.random() * 80, .07, "triangle", .05),
   coin: () => { tone(988, .07, "square", .025); tone(1319, .12, "square", .025, .06); },
@@ -2513,7 +2515,7 @@ function jobIntro(L) {
    <div class="bubble">”${esc(L.hi)}”</div>
    <div class="col" id="prepRows">${prep.rows}</div>
    ${!prep.limit && prep.est && !JOB_NOEST(L) ? `<div class="row" style="gap:6px"><span style="font-size:18px">⏱</span><span class="small grow">3 stjärnor om du blir klar på under <b>${fmtT(prep.est * .95)}</b>, 2 stjärnor under <b>${fmtT(prep.est * 1.4)}</b>.</span></div>` : ""}
-   <div class="row"><span class="eyebrow grow">Belöning</span>${STARI}${STARI}${STARI}<b>${kr(L.pay)}</b> ${isDone(L.id) ? `<span class="small">(igen: 40 %)</span>` : ""}</div>
+   <div class="row"><span class="eyebrow grow">Belöning</span>${STARI}${STARI}${STARI}<b>${kr(L.pay)}</b> ${isDone(L.id) ? `<span class="small">(igen: 60 %, full lön första gången du tar 3 ★)</span>` : ""}</div>
    <div class="btns"><button class="btn soft" id="jBack">Senare</button><button class="btn ${J.green ? "green" : ""}" id="jGo">${J.verb}!</button></div>`);
   $("jBack").onclick = closeSheet;
   $("jGo").onclick = () => { closeSheet(); beginJob(L, "none", prep); };
@@ -2625,8 +2627,9 @@ function finishJob(extra = {}) {
   if (stars === 0) return failJob(L, pc, svc);
   const before = snapshot();
   const replay = isDone(L.id);
-  const mult = [0, .6, .8, 1][stars] * (replay ? .4 : 1) * (G.owned.skylt ? 1.05 : 1) * svc;
-  const pay = Math.round(L.pay * mult), bonus = stars === 3 ? 10 + Math.round(L.no / 5) : 0;
+  const first3 = replay && stars === 3 && starsOf(L.id) < 3;
+  const mult = [0, .6, .8, 1][stars] * (replay && !first3 ? .6 : 1) * (G.owned.skylt ? 1.05 : 1) * svc;
+  const pay = Math.round(L.pay * mult), bonus = stars === 3 ? Math.round(pay * .25) : 0;
   const total = pay + JOB.earned + JOB.helperFound + bonus;
   G.done[L.id] = true; G.stars[L.id] = Math.max(starsOf(L.id), stars); G.stats.jobs++;
   if (!G.book.some(b => b.id === L.id)) G.book.push({ id: L.id, name: L.who.name, look: L.who.look, char: L.who.char, title: L.title, place: L.place, area: L.area, bye: L.bye });
@@ -2639,7 +2642,7 @@ function finishJob(extra = {}) {
    <h2 class="h2" style="text-align:center;font-size:28px">${title}</h2>
    <p class="small" style="text-align:center;margin:0">${esc(L.title)}${lim ? ` · ${pc} % klart` : ""} på ${Math.floor(secs / 60)} min ${secs % 60} s · ${stars} ${stars === 1 ? "stjärna" : "stjärnor"}${JOB.mistakes ? " · en flugsvamp i korgen" : ""}</p>
    <div class="card" style="flex-direction:row;align-items:center;gap:10px">${whoSVG(L, 40, 60)}<span class="bubble grow">”${esc(L.bye)}”</span></div>
-   <div class="card"><div class="res">${COIN}<span>Lön från ${esc(L.who.name)}${replay ? " (igen)" : ""}${svc > 1 ? " · kundservice +" + Math.round((svc - 1) * 100) + " %" : ""}</span><span class="v">${pay} kr</span></div>
+   <div class="card"><div class="res">${COIN}<span>Lön från ${esc(L.who.name)}${first3 ? " (första 3 ★ – full lön)" : replay ? " (igen)" : ""}${svc > 1 ? " · kundservice +" + Math.round((svc - 1) * 100) + " %" : ""}</span><span class="v">${pay} kr</span></div>
    <div class="res"><span style="width:18px;text-align:center">✨</span><span>Hittat på jobbet</span><span class="v">+${JOB.earned} kr</span></div>
    ${helperLine}${bonus ? `<div class="res"><span style="width:18px;text-align:center">⭐</span><span>Tre stjärnor-bonus</span><span class="v">+${bonus} kr</span></div>` : ""}
    <div class="tot">Totalt<b>${total} kr</b></div>
@@ -3267,7 +3270,7 @@ function drawGardenBG(c, r, S) {
   c.fillStyle = "#8fcc6c"; c.fillRect(0, 0, W, H);
   if (r.t === "fotboll") drawPitch(c);
   if (r.t === "framsidan") { rr(c, 40, -10, 280, 120, 6, "#d6534a"); c.fillStyle = "#b8403a"; c.fillRect(40, 100, 280, 10); for (const x of [70, 250]) { rr(c, x, 30, 46, 40, 4, "#fff"); rr(c, x + 4, 34, 38, 32, 2, "#cfe9ff"); } rr(c, 156, 40, 48, 70, 4, "#fff"); for (let y = 124; y < H; y += 34) rr(c, 160, y, 40, 26, 10, "#e3d6c4"); circ(c, 30, 112, 8, "#e86a92"); circ(c, 340, 112, 8, "#e86a92"); }
-  if (r.t === "baksidan") { c.fillStyle = "#8a5a3c"; c.fillRect(82, 90, 16, 70); circ(c, 90, 80, 56, "#5da14a"); circ(c, 60, 96, 30, "#6db35a"); circ(c, 122, 90, 32, "#6db35a"); for (const [x, y] of [[76, 62], [104, 78], [58, 96], [124, 100]]) circ(c, x, y, 7, "#d9573a"); const pile = S.pile || 0; if (pile > 0) { const pr = Math.min(52, 14 + pile * 2.2); c.fillStyle = "#e8963a"; c.beginPath(); c.ellipse(90, 210, pr, pr * .55, 0, 0, 7); c.fill(); c.fillStyle = "#d9573a"; c.beginPath(); c.ellipse(84, 206, pr * .6, pr * .32, 0, 0, 7); c.fill(); } c.strokeStyle = "#fff"; c.setLineDash([5, 5]); c.lineWidth = 2; c.beginPath(); c.ellipse(90, 210, 46, 26, 0, 0, 7); c.stroke(); c.setLineDash([]); c.font = "700 11px Fredoka, sans-serif"; c.fillStyle = "#fff"; c.textAlign = "center"; c.fillText("lövhögen", 90, 250); }
+  if (r.t === "baksidan") { c.fillStyle = "#8a5a3c"; c.fillRect(82, 90, 16, 70); circ(c, 90, 80, 56, "#5da14a"); circ(c, 60, 96, 30, "#6db35a"); circ(c, 122, 90, 32, "#6db35a"); for (const [x, y] of [[76, 62], [104, 78], [58, 96], [124, 100]]) circ(c, x, y, 7, "#d9573a"); const lv = r.items.filter(o => o.type === "leaf"), pile = lv.filter(o => o.a <= 0).length; if (pile > 0) { const pr = 14 + 38 * pile / Math.max(1, lv.length); c.fillStyle = "#e8963a"; c.beginPath(); c.ellipse(90, 210, pr, pr * .55, 0, 0, 7); c.fill(); c.fillStyle = "#d9573a"; c.beginPath(); c.ellipse(84, 206, pr * .6, pr * .32, 0, 0, 7); c.fill(); } c.strokeStyle = "#fff"; c.setLineDash([5, 5]); c.lineWidth = 2; c.beginPath(); c.ellipse(90, 210, 46, 26, 0, 0, 7); c.stroke(); c.setLineDash([]); c.font = "700 11px Fredoka, sans-serif"; c.fillStyle = "#fff"; c.textAlign = "center"; c.fillText("lövhögen", 90, 250); }
   if (r.t === "rabatterna") { c.fillStyle = "#4f8a3a"; c.fillRect(0, 0, W, 46); for (let x = 0; x < W; x += 26) circ(c, x + 13, 36, 16, "#5da14a"); rr(c, 30, 110, 300, 110, 14, "#7a4a2a"); rr(c, 30, 270, 300, 110, 14, "#7a4a2a"); for (const [x, y, cc] of [[50, 130, "#e86a92"], [110, 200, "#ffd34d"], [190, 125, "#e86a92"], [260, 190, "#5aa9e6"], [310, 130, "#e86a92"], [50, 360, "#ffd34d"], [120, 290, "#5aa9e6"], [210, 365, "#e86a92"], [290, 290, "#ffd34d"]]) { circ(c, x, y, 7, cc); circ(c, x, y, 2.5, "#fff"); } }
   if (r.t === "barbuskarna") { rr(c, 0, 170, W, 80, 0, "#a8dc86"); for (const [x, y] of [[90, 130], [270, 130], [90, 300], [270, 300]]) { circ(c, x, y, 40, "#4f8a3a"); circ(c, x - 18, y + 6, 24, "#5da14a"); circ(c, x + 18, y - 4, 26, "#5da14a"); } const im = svgImg("cust:" + S.L.who.look, `<svg viewBox="-20 -30 40 60" width="80" height="120">${personInner(S.L.who.look)}</svg>`); if (im.complete) c.drawImage(im, 300, 360, 44, 66); }
   if (r.t === "gardsplanen") { c.fillStyle = "#e3d6c4"; c.beginPath(); c.ellipse(180, 240, 150, 170, 0, 0, 7); c.fill(); c.fillStyle = "#d6c6ae"; for (let i = 0; i < 40; i++) circ(c, 60 + (i * 53) % 240, 90 + (i * 37) % 300, 2, "#cdbb9e"); rr(c, 250, 20, 100, 70, 6, "#c0392b"); c.fillStyle = "#fff"; c.fillRect(250, 20, 100, 6); }
@@ -3469,6 +3472,8 @@ function prints(r, kind, x0, y0, x1, y1, R) {
 }
 function recount(r) { let n = 0; for (let i = 0; i < r.da.length; i++) if (r.da[i] > .1) n++; r.left = n; r.d0 = Math.max(r.d0 || 1, n, 1); r.ddirty = true; }
 function spotFree(r, R, box = [40, 60, 320, 400]) { for (let t = 0; t < 40; t++) { const x = box[0] + R() * (box[2] - box[0]), y = box[1] + R() * (box[3] - box[1]); if (!r.mask[Math.floor(y / CS) * GW + Math.floor(x / CS)]) return [x, y]; } return [180, 300]; }
+/* hur mycket svår smuts det blir (kan ändras vid balansering) */
+let DIRTK = { hb: 1, hk: 5, sr: 12, sv: 10 };
 function makeDirt(r, L, lvl, R, home) {
   newGrid(r);
   const T = ROOMT[r.t] || {}, early = !home && L.no <= 3;
@@ -3477,21 +3482,24 @@ function makeDirt(r, L, lvl, R, home) {
   for (let k = 0; k < nd; k++) { const [x, y] = spotFree(r, R, [20, 30, 340, 420]); blob(r, dust, x, y, 26 + R() * 24, .55 + R() * .4, R); }
   const door = () => { const d = (r.doors[0] || { side: r.exit || "s" }).side; return DOORPOS[d]; };
   const trail = () => { const [dx, dy] = door(); const [x, y] = spotFree(r, R, [70, 100, 290, 360]); prints(r, DI.lera, clamp(dx, 30, 330), clamp(dy, 30, 410), x, y, R); };
-  let hard = early ? 0 : Math.round(lvl * 3 + R() * .8 - .2);
+  let hard = early ? 0 : Math.round(DIRTK.hb + lvl * DIRTK.hk + R() * .8 - .2);
   const hk = [DI.kaffe, DI.ketchup, DI.vin];
   if (T.dirt === "entry") { trail(); if (lvl > .15) trail(); }
   else if (T.dirt === "kitchen") { hard += early ? 1 : 2; }
   else if (T.dirt === "wet") { trail(); hk.length = 0; hk.push(DI.kalk); hard += 1; }
   else if (lvl > .3) { const [x, y] = spotFree(r, R); blob(r, DI.jord, x, y, 20 + R() * 10, .9, R); }
   if (home) hard = Math.min(hard, 1);
-  for (let k = 0; k < hard; k++) { const [x, y] = spotFree(r, R, [50, 70, 310, 390]); stain(r, pick(R, hk), x, y, 9 + R() * 7, R); }
+  for (let k = 0; k < hard; k++) { const [x, y] = spotFree(r, R, [50, 70, 310, 390]); stain(r, pick(R, hk), x, y, DIRTK.sr + R() * DIRTK.sv, R); }
   // mynt gömda under smutsen
   const nc = (R() < .55 ? 1 : 0) + (R() < lvl ? 1 : 0);
   for (let k = 0; k < nc; k++) for (let t = 0; t < 40; t++) { const x = 30 + R() * 300, y = 40 + R() * 370, i = Math.floor(y / CS) * GW + Math.floor(x / CS); if (r.da[i] > .5) { r.coins.push({ x, y, v: 5 + Math.round(L.no / 10) }); break; } }
   r.d0 = 1; recount(r);
 }
 function cellAt(r, x, y) { const gx = clamp(Math.floor(x / CS), 0, GW - 1), gy = clamp(Math.floor(y / CS), 0, GH - 1); return gy * GW + gx; }
+/* inställningar för städningen (kan ändras vid balansering) */
+let CLEAN_POW = 1, CLEAN_TIDY = .005;
 function scrub(r, x, y, rad, pow) {
+  pow *= CLEAN_POW;
   const med = 1 + .35 * lvU("medel"), g = rad / CS + 1; let hit = 0, hard = 0;
   for (let gy = Math.max(0, Math.floor(y / CS - g)); gy < Math.min(GH, y / CS + g); gy++)
     for (let gx = Math.max(0, Math.floor(x / CS - g)); gx < Math.min(GW, x / CS + g); gx++) {
@@ -3598,7 +3606,7 @@ SCENE.prepare = function (L, homeOpt) {
     const base = p.rooms.reduce((s, r) => s + roomWork(r, L.job), 0) * (L.job === "stad" ? 3.6 : .8);
     // tidsgränsen blir snävare längre fram – då behövs bättre redskap
     const k = TIMEK(L);
-    if (!homeOpt && L.area !== "final") p.limit = Math.max(40, Math.round(base * k * BALK(L) / 5) * 5);
+    if (!homeOpt && L.area !== "final") p.limit = Math.max(40, Math.round(base * k * BALK(L) * (L.job === "stad" ? .75 : 1) / 5) * 5); // .75: fler fläckar ska inte ge mer tid
     p.work = base;
     p.rows += legendNote(L.job, p.limit);
   }
@@ -3696,7 +3704,7 @@ SCENE.rubAt = function (p) {
     }
     for (const c of r.coins) if (!c.got && Math.hypot(c.x - p.x, c.y - p.y) < t.r + 6 && r.da[cellAt(r, c.x, c.y)] <= .15) { c.got = true; sfx.coin(); burst(c.x, c.y, "#ffd34d"); jobGain(c.v, c.x, c.y); }
     if (r.keySpot && !r.keyOut && r.da[cellAt(r, r.keySpot.x, r.keySpot.y)] <= .15) { r.keyOut = true; r.items.push(mk("nyckel", r.keySpot.x, r.keySpot.y, {})); jtoast("En nyckel låg under fläcken! Tryck på den."); sfx.ok(); }
-    if (r.left > 0 && r.left <= Math.max(2, r.d0 * .025)) { for (let i = 0; i < r.da.length; i++) r.da[i] = 0; r.left = 0; r.ddirty = true; r.ddirty = true; r.drect = null; for (let k = 0; k < 4; k++) burst(60 + Math.random() * 240, 80 + Math.random() * 280, "#fff"); S.after(true); }
+    if (r.left > 0 && r.left <= Math.max(CLEAN_TIDY > 0 ? 2 : 0, r.d0 * CLEAN_TIDY)) { for (let i = 0; i < r.da.length; i++) r.da[i] = 0; r.left = 0; r.ddirty = true; r.ddirty = true; r.drect = null; for (let k = 0; k < 4; k++) burst(60 + Math.random() * 240, 80 + Math.random() * 280, "#fff"); S.after(true); }
   } else {
     const cut = bestTier(GCUT), rake = bestTier(GRAKE), sax = bestTier(GSAX);
     for (const o of r.items) {
@@ -5105,14 +5113,15 @@ const RIDE = {
     setTools([{ id: "x", name: mode === "bil" ? "Tryck på mynt och djur du ser" : "Dra fingret åt sidorna för att styra", icon: mode === "bil" ? ICON.hand : ic(`<path d="M-11 0 h22 M-6 -5 l-5 5 l5 5 M6 -5 l5 5 l-5 5" stroke="#3a2a2e" stroke-width="2.4" fill="none" stroke-linecap="round"/>`) }], "x");
     hint(mode === "bil" ? "<b>Tryck</b> på mynt, älgar och kossor genom rutan." : "<b>Styr</b> med fingret och samla mynt. Inget kan gå fel!");
     JOB.running = true; clearInterval(JOB.tick);
-    JOB.tick = setInterval(() => R.step(), 33);
+    // allt rör sig nu i takt med skärmens bilder (step körs från draw) – mjukare än en egen klocka
+    clearInterval(JOB.tick); JOB.tick = 0; R.last = performance.now();
     jtoast(mode === "bil" ? "Tobbe: ”Hoppa in!”" : mode === "promenad" ? `${PETS[dog].name} drar i kopplet!` : "Iväg på rosa cykeln!");
   },
   stop() { clearInterval(JOB && JOB.tick); },
   step() {
     const R = this; if (R.done || JOB.paused) return;
     const now = performance.now(), dt = Math.min(.05, (now - R.last) / 1000); R.last = now; R.t += dt;
-    R.x += (R.tx - R.x) * .18; R.scroll += dt * (R.mode === "promenad" ? 90 : 160);
+    const k30 = dt * 30; R.x += (R.tx - R.x) * (1 - Math.pow(1 - .18, k30)); R.scroll += dt * (R.mode === "promenad" ? 90 : 160);
     if (R.mode === "bil") {
       R.spawnT -= dt; if (R.spawnT <= 0) { R.spawnT = .55 + Math.random() * .4; const k = Math.random(); R.objs.push({ z: 1, side: Math.random() < .5 ? -1 : 1, off: .2 + Math.random() * .8, t: k < .55 ? "coin" : k < .7 ? "alg" : k < .85 ? "ko" : "tree" }); }
       for (const o of R.objs) o.z -= dt * .45; R.objs = R.objs.filter(o => o.z > 0.04 && !o.got);
@@ -5120,7 +5129,7 @@ const RIDE = {
       if (R.sayT) R.sayT = Math.max(0, R.sayT - dt);
     } else {
       R.spawnT -= dt; if (R.spawnT <= 0) { R.spawnT = .35 + Math.random() * .35; const k = Math.random(); R.objs.push({ x: 110 + Math.floor(Math.random() * 3) * 70, y: -20, t: k < .7 ? "coin" : k < .85 ? (R.mode === "promenad" ? "pinne" : "blomma") : "pol" }); if (Math.random() < .5) R.side.push({ x: Math.random() < .5 ? 30 + Math.random() * 30 : 300 + Math.random() * 30, y: -40, t: pick(Math.random, ["tree", "tree", "house", "bush"]) }); }
-      const sp = (R.mode === "promenad" ? 2.2 : 3.4);
+      const sp = (R.mode === "promenad" ? 2.2 : 3.4) * k30;
       for (const o of R.objs) { o.y += sp; const mag = G.owned.korg && R.mode === "cykel" ? 34 : 24; if (!o.got && o.t !== "pol" && Math.abs(o.x - R.x) < mag && Math.abs(o.y - 330) < 26) { o.got = true; const g = o.t === "coin" ? 2 : 3; R.got += g; JOB.earned += g; $("jCoins").textContent = JOB.earned; burst(o.x, o.y); sfx.coin(); floatText(o.x, o.y, "+" + g); } if (o.t === "pol" && !o.splash && Math.abs(o.x - R.x) < 22 && Math.abs(o.y - 330) < 16) { o.splash = true; sfx.pop(); floatText(o.x, o.y, "Plask!", "#5aa9e6"); } }
       for (const s of R.side) s.y += sp; R.objs = R.objs.filter(o => o.y < H + 30 && !o.got); R.side = R.side.filter(s => s.y < H + 60);
     }
@@ -5138,6 +5147,7 @@ const RIDE = {
   proj(o) { const s = 1 - o.z; const hx = 180, hy = (184 - 40) * 360 / 430; const x = hx + o.side * (14 + o.off * 120) * s * 1.5, y = hy + 120 * s * s; return { x, y, s }; },
   draw(c) {
     const R = this;
+    if (!R.done && JOB) R.step();
     if (R.mode === "bil") {
       // som konceptbild X8: man sitter i baksätet, Tobbe kör till vänster och Fanny sitter bredvid
       const K = 360 / 430, Y = v => (v - 40) * K;
@@ -5266,12 +5276,13 @@ finishJob = function (extra) {
   return _finishJob(extra);
 };
 function finaleSequence() {
+  const gift = !G.finaleGift; if (gift) { G.finaleGift = true; addCoins(10000, true); }
   G.finale = true; G.hats.krona = true; save();
   confetti(80); sfx.star();
   const pets = Object.keys(PETS).filter(p => G.pets[p]);
   openSheet(`<div class="big-emoji">🎉</div><h2 class="h2" style="text-align:center">Sommarfest i Hudiksvall!</h2>
   <div class="card" style="flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:flex-end;gap:4px;background:#fde6ee">${fannySVG(G.outfit, "krona", 56, 84)}${useSVG("dhir", 50, 75)}${jockeOK() ? useSVG("jocke", 50, 75) : ""}${tobbeOK() ? useSVG("tobbe", 50, 75) : ""}${pets.map(p => petSVG(p, 40, 34)).join("")}</div>
-  <p class="small" style="text-align:center;margin:0">Hela stan glittrar. Dhir, Jocke, Tobbe och alla kunder firar Fanny – Städdrottningen av Hudiksvall. Du har fått <b>Städdrottningens krona</b> i Garderoben.</p>
+  <p class="small" style="text-align:center;margin:0">Hela stan glittrar. Dhir, Jocke, Tobbe och alla kunder firar Fanny – Städdrottningen av Hudiksvall. Du har fått <b>Städdrottningens krona</b> i Garderoben${gift ? " och en present på <b>10 000 kr</b> från hela stan" : ""}.</p>
   <div class="bubble">Dhir: ”Fanny … det ligger ett brev till dig i brevlådan.”</div>
   <button class="btn" id="toLetter">💌 Öppna brevet</button>`, { center: true });
   $("toLetter").onclick = () => { sheetClose = null; closeSheet(); showLetter(); };
@@ -5321,8 +5332,18 @@ SCENE.start = function (L, helper, prep) {
    fönsterputsen (reflexer), tvätten (lampljus, såpbubblor), svampskogen (solstrålar, pollen),
    snögubbarna (lampsken, gnistrande snö) och resorna med bil och cykel. */
 const liftSh = (c, fn, blur = 8, dx = 3, dy = 6, a = .3) => { const m = c.getTransform(); c.save(); c.shadowColor = `rgba(50,40,30,${a})`; c.shadowBlur = (LOWQ ? blur * .35 : blur) * m.a; c.shadowOffsetX = dx * m.a; c.shadowOffsetY = dy * m.d; fn(); c.restore(); };
-function liftVignette(c, r0, r1, rgb, a, cx = 180, cy = 240) { const v = c.createRadialGradient(cx, cy, r0, cx, cy, r1); v.addColorStop(0, `rgba(${rgb},0)`); v.addColorStop(1, `rgba(${rgb},${a})`); c.fillStyle = v; c.fillRect(0, 0, W, H); }
-function liftGlow(c, x, y, r, rgb, a) { const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`); c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2); }
+/* ljus och vinjetter ritas en gång till en egen bild och återanvänds (runda toningar är tunga på mobilen) */
+const LIFTC = {};
+function liftVignette(c, r0, r1, rgb, a, cx = 180, cy = 240) {
+  const key = "v" + [r0, r1, rgb, a, cx, cy].join("|"); let cv = LIFTC[key];
+  if (!cv) { const k = 1.5; cv = document.createElement("canvas"); cv.width = Math.ceil(W * k); cv.height = Math.ceil(H * k); const g = cv.getContext("2d"); g.scale(k, k); const v = g.createRadialGradient(cx, cy, r0, cx, cy, r1); v.addColorStop(0, `rgba(${rgb},0)`); v.addColorStop(1, `rgba(${rgb},${a})`); g.fillStyle = v; g.fillRect(0, 0, W, H); LIFTC[key] = cv; }
+  c.drawImage(cv, 0, 0, W, H);
+}
+function liftGlow(c, x, y, r, rgb, a) {
+  const key = "g" + [r, rgb, a].join("|"); let cv = LIFTC[key];
+  if (!cv) { const s = Math.ceil(r * 2 * 1.5); cv = document.createElement("canvas"); cv.width = cv.height = s; const g = cv.getContext("2d"); const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(0, 0, s, s); LIFTC[key] = cv; }
+  c.drawImage(cv, x - r, y - r, r * 2, r * 2);
+}
 function liftButterfly(c, x, y, col, t) { const f = Math.abs(Math.sin(t * 12)) * .8; c.save(); c.translate(x, y); c.fillStyle = col; c.beginPath(); c.ellipse(-4, 0, 5, 7 * f + 2, -.5, 0, 7); c.ellipse(4, 0, 5, 7 * f + 2, .5, 0, 7); c.fill(); c.fillStyle = "#3a2a2e"; c.fillRect(-1, -5, 2, 10); c.restore(); }
 function liftSparkle(c, x, y, s) { c.save(); c.translate(x, y); c.scale(s, s); c.beginPath(); c.moveTo(0, -5); c.quadraticCurveTo(.8, -.8, 5, 0); c.quadraticCurveTo(.8, .8, 0, 5); c.quadraticCurveTo(-.8, .8, -5, 0); c.quadraticCurveTo(-.8, -.8, 0, -5); c.fill(); c.restore(); }
 const LIFTJOBS = ["tradgard", "svamp", "fonster"];
@@ -5388,8 +5409,8 @@ SNOW.draw = function (c) {
 
 // resorna: cykel/promenad uppifrån och bilen inifrån
 const _drawBikeL = drawBike, _drawRiderL = drawRider;
-drawBike = function (c, x, y) { return liftSh(c, () => _drawBikeL(c, x, y), 8, 5, 6, .3); };
-drawRider = function (c, x, y) { return liftSh(c, () => _drawRiderL(c, x, y), 8, 5, 6, .25); };
+drawBike = function (c, x, y) { c.save(); c.fillStyle = "rgba(50,40,30,.22)"; c.beginPath(); c.ellipse(x + 5, y + 8, 16, 30, 0, 0, 7); c.fill(); c.restore(); return _drawBikeL(c, x, y); };
+drawRider = function (c, x, y) { return _drawRiderL(c, x, y); };
 const _drawRideL = RIDE.draw;
 RIDE.draw = function (c) {
   _drawRideL.call(this, c);
@@ -5411,9 +5432,7 @@ RIDE.draw = function (c) {
     rr(c, 20, 14, 320, 10, 5, "rgba(255,255,255,.35)"); rr(c, 20, 14, 320 * Math.min(1, R.t / R.dur), 10, 5, "#e86a92");
   } else {
     // trädens skuggor på marken
-    c.globalCompositeOperation = "multiply";
     for (const s of R.side) { if (s.t === "tree") { c.fillStyle = "rgba(60,90,50,.32)"; c.beginPath(); c.ellipse(s.x + 12, s.y + 14, 24, 14, .3, 0, 7); c.fill(); } else if (s.t === "bush") { c.fillStyle = "rgba(60,90,50,.28)"; c.beginPath(); c.ellipse(s.x + 7, s.y + 8, 13, 8, .3, 0, 7); c.fill(); } }
-    c.globalCompositeOperation = "source-over";
     // solfläckar som glider förbi med vägen
     for (let i = 0; i < 8; i++) { const x = 40 + (i * 89) % 290, y = ((i * 137 + sc) % 520) - 40; liftGlow(c, x, y, 40, "255,246,200", .22); }
     // fartränder vid vägkanten
@@ -6434,7 +6453,6 @@ init();
 
 </script>
 <script>
-/* gör spelet till en app som fungerar utan nät; sparningen påverkas inte */
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
 </body>
